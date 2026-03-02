@@ -1,0 +1,9 @@
+{
+  "name": "discord-bridge",
+  "version": "1.0.0",
+  "description": "Discord bridge for Claude Code two-way communication",
+  "private": true,
+  "dependencies": {
+    "discord.js": "^14.16.0"
+  }
+}

@@ -1,628 +1,354 @@
-# Complete Setup Guide
-### Get autonomous coding working in 20 minutes
+# Setup Guide
 
-This guide walks you through setting up the autonomous Claude Code system from scratch.
+Complete installation walkthrough for the Autonomous Claude Code system.
 
 ---
 
 ## Prerequisites
 
-Before starting, make sure you have:
-
-- **Claude Code** installed and working ([Install Guide](https://docs.claude.com/code))
-- **Discord account** (free tier works fine)
-- **Terminal access** (bash, zsh, or PowerShell)
-- **20 minutes** of focused time
-
-**Operating Systems:**
-- ✅ macOS
-- ✅ Linux
-- ✅ Windows (via WSL or PowerShell)
+- **Claude Code** installed ([docs.claude.com](https://docs.claude.com))
+- **Discord account** with a server you control
+- **Git** (to clone this repo)
+- **curl** (included on Mac/Linux; available in WSL on Windows)
 
 ---
 
-## Part 1: Discord Webhook Setup (5 minutes)
+## Platform Notes
 
-### Step 1.1: Create a Discord Server (If Needed)
+| Platform | Hook Script | Notes |
+|----------|------------|-------|
+| macOS | `discord-notify.sh` | Native bash, works directly |
+| Linux | `discord-notify.sh` | Native bash, works directly |
+| Windows (WSL) | `discord-notify.sh` | Hooks run via WSL bash — **use WSL path** |
+| Windows (native) | `discord-notify.ps1` | PowerShell version, requires PS execution policy |
 
-If you don't have a Discord server:
-
-1. Open Discord (app or web)
-2. Click the "+" button in the left sidebar
-3. Select "Create My Own"
-4. Name it (e.g., "Dev Notifications")
-5. Click "Create"
-
-### Step 1.2: Create a Webhook
-
-1. Right-click your server name
-2. Select "Server Settings"
-3. Click "Integrations" in the left menu
-4. Click "Webhooks" (or "Create Webhook" if first time)
-5. Click "New Webhook"
-6. Name it: "Claude Code Alerts"
-7. Select the channel (recommend creating a dedicated #dev-notifications channel)
-8. Click "Copy Webhook URL"
-
-**Your webhook URL looks like:**
-```
-https://discord.com/api/webhooks/1234567890/AbCdEfGhIjKlMnOpQrStUvWxYz
-```
-
-**Save this URL** - you'll need it shortly!
-
-### Step 1.3: Test the Webhook
-
-Quick test to verify it works:
-
-```bash
-curl -X POST "YOUR_WEBHOOK_URL" \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Test notification from terminal"}'
-```
-
-Check Discord - you should see the message appear!
+> ⚠️ **Windows users:** Claude Code hooks execute via your WSL environment. Install the `.sh` script to your **WSL home path** (`/home/YOUR_WSL_USER/.claude/`), not your Windows home path. The `.ps1` version is provided for users running Claude Code natively under PowerShell without WSL.
 
 ---
 
-## Part 2: Install Hook Script (5 minutes)
-
-### Step 2.1: Clone This Repository
+## Step 1: Clone the Repo
 
 ```bash
-# Clone the repo
-git clone https://github.com/yourusername/autonomous-claude-code.git
+git clone https://github.com/AetherWave-Studio/autonomous-claude-code.git
 cd autonomous-claude-code
 ```
 
-### Step 2.2: Install the Hook Script
+---
 
-**For macOS/Linux:**
+## Step 2: Create Your Discord Webhook
+
+1. Open Discord → your server → **Server Settings**
+2. Go to **Integrations → Webhooks → New Webhook**
+3. Name it (e.g. "Claude Agent Monitor")
+4. Select the channel where notifications should post
+5. Click **Copy Webhook URL**
+6. Save it somewhere safe — you'll use it in the next step
+
+**Optional: Post to a Forum Thread**
+
+If you want notifications in a specific thread (recommended for organization):
+```
+https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN?thread_id=YOUR_THREAD_ID
+```
+Get the thread ID by right-clicking the thread → **Copy Thread ID** (requires Developer Mode in Discord settings).
+
+---
+
+## Step 3: Set Up the Discord Bridge Bot
+
+The bridge bot enables two-way communication — your Discord messages reach Claude mid-session in real time.
+
+### Prerequisites
+
+- **Node.js** v18+ installed
+- A **Discord Bot** with a token ([Create one here](https://discord.com/developers/applications))
+
+### Discord Bot Setup
+
+1. Discord Developer Portal → **New Application** → name it (e.g. "ClaudeCode Bridge")
+2. Go to **Bot** → **Add Bot**
+3. Under **Privileged Gateway Intents**, enable all three:
+   - Presence Intent
+   - Server Members Intent
+   - **Message Content Intent** ← required
+4. Click **Reset Token** → copy the token
+5. Under **OAuth2 → URL Generator**: select `bot` scope + `Read Messages/View Channels` permission
+6. Open the generated URL → add the bot to your server
+7. Right-click your `#claude-code-chat` channel → Copy Channel ID (requires Developer Mode in Discord settings)
+8. Copy your own Discord User ID the same way
+
+### Install the Bridge
 
 ```bash
-# Create .claude directory if it doesn't exist
-mkdir -p ~/.claude
-
-# Copy the hook script
-cp scripts/discord-notify.sh ~/.claude/
-
-# Make it executable
-chmod +x ~/.claude/discord-notify.sh
-
-# Edit and add your webhook URL
-nano ~/.claude/discord-notify.sh
+# Copy bridge files to Claude config directory
+cp -r scripts/discord-bridge ~/.claude/
+cd ~/.claude/discord-bridge
+npm install
 ```
 
-**For Windows (WSL):**
+### Set Environment Variables
+
+Add these to your shell profile (`~/.bashrc`, `~/.zshrc`, or PowerShell `$PROFILE`):
 
 ```bash
-# Same as macOS/Linux above - WSL uses bash
-mkdir -p ~/.claude
-cp scripts/discord-notify.sh ~/.claude/
-chmod +x ~/.claude/discord-notify.sh
-nano ~/.claude/discord-notify.sh
+export DISCORD_BOT_TOKEN="your-bot-token-here"
+export DISCORD_CHANNEL_ID="your-channel-id-here"
+export DISCORD_USER_ID="your-discord-user-id-here"
 ```
 
-**For Windows (PowerShell):**
-
-```powershell
-# Create .claude directory
-New-Item -Path "$env:USERPROFILE\.claude" -ItemType Directory -Force
-
-# Copy PowerShell script
-Copy-Item scripts\discord-notify.ps1 "$env:USERPROFILE\.claude\"
-
-# Edit to add webhook URL
-notepad "$env:USERPROFILE\.claude\discord-notify.ps1"
-```
-
-### Step 2.3: Add Your Webhook URL
-
-In the script file you just opened, find this line:
-
+Then reload your profile:
 ```bash
-WEBHOOK_URL="YOUR_WEBHOOK_URL_HERE"
-```
-
-Replace `YOUR_WEBHOOK_URL_HERE` with the URL you copied from Discord.
-
-**Example:**
-```bash
-WEBHOOK_URL="https://discord.com/api/webhooks/1234567890/AbCdEfGhIjKlMnOpQrStUvWxYz"
-```
-
-Save and close the file.
-
-### Step 2.4: Test the Hook Script
-
-**macOS/Linux/WSL:**
-```bash
-echo '{"hook_event_name":"Stop","last_assistant_message":"Test notification from hook script","session_id":"test-001"}' | ~/.claude/discord-notify.sh
+source ~/.bashrc  # or source ~/.zshrc
 ```
 
 **Windows PowerShell:**
 ```powershell
-'{"hook_event_name":"Stop","last_assistant_message":"Test notification from hook script","session_id":"test-001"}' | & "$env:USERPROFILE\.claude\discord-notify.ps1"
+$env:DISCORD_BOT_TOKEN = "your-bot-token-here"
+$env:DISCORD_CHANNEL_ID = "your-channel-id-here"
+$env:DISCORD_USER_ID = "your-discord-user-id-here"
 ```
 
-Check Discord - you should see a formatted notification appear!
+> ⚠️ Never commit your actual token to version control. The bridge.js in this repo uses env vars — keep them in your shell profile only.
 
 ---
 
-## Part 3: Configure Claude Code Hooks (5 minutes)
+## Step 4: Install the Hook Script
 
-### Step 3.1: Create/Edit settings.json
-
-Claude Code reads hooks configuration from `~/.claude/settings.json`.
-
-**Check if it exists:**
+### macOS / Linux
 
 ```bash
-# macOS/Linux/WSL
-ls ~/.claude/settings.json
-
-# Windows PowerShell
-Test-Path "$env:USERPROFILE\.claude\settings.json"
-```
-
-### Step 3.2: Add Hooks Configuration
-
-**If file doesn't exist, create it:**
-
-```bash
-# macOS/Linux/WSL
-cp templates/settings.json ~/.claude/settings.json
-
-# Windows PowerShell
-Copy-Item templates\settings.json "$env:USERPROFILE\.claude\settings.json"
-```
-
-**If file exists, add the hooks section:**
-
-Open the file:
-```bash
-# macOS/Linux/WSL
-nano ~/.claude/settings.json
-
-# Windows PowerShell
-notepad "$env:USERPROFILE\.claude\settings.json"
-```
-
-Add or merge this configuration:
-
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/discord-notify.sh",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/discord-notify.sh",
-            "timeout": 15
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**For Windows PowerShell**, use this instead:
-
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -ExecutionPolicy Bypass -File %USERPROFILE%\\.claude\\discord-notify.ps1",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -ExecutionPolicy Bypass -File %USERPROFILE%\\.claude\\discord-notify.ps1",
-            "timeout": 15
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Save the file.
-
----
-
-## Part 4: Install Protocol Document (3 minutes)
-
-The protocol document trains Claude to write structured, useful notifications.
-
-### Step 4.1: Copy CLAUDE.md
-
-```bash
-# macOS/Linux/WSL
-cp templates/CLAUDE.md ~/.claude/
-
-# Windows PowerShell
-Copy-Item templates\CLAUDE.md "$env:USERPROFILE\.claude\"
-```
-
-### Step 4.2: Verify Installation
-
-```bash
-# macOS/Linux/WSL
-ls -la ~/.claude/
-
-# Should show:
-# - discord-notify.sh (executable)
-# - settings.json
-# - CLAUDE.md
-
-# Windows PowerShell
-Get-ChildItem "$env:USERPROFILE\.claude"
-```
-
----
-
-## Part 5: Toggle System (Optional but Recommended)
-
-The notification system includes a toggle so you can turn notifications on/off without restarting Claude Code or editing settings.json.
-
-### How It Works
-
-Both hook scripts check for a toggle file (`~/.claude/notifications-enabled`). If the file exists, notifications are sent. If it doesn't, the hook exits silently.
-
-**Default state: notifications are OFF.**
-
-### For PowerShell Users
-
-Add convenience functions to your PowerShell profile:
-```powershell
-# Open profile
-notepad $PROFILE
-
-# Copy the functions from scripts/powershell-functions.ps1
-# Save and reload:
-. $PROFILE
-```
-
-Now you can use:
-- `discord-on` - Enable notifications
-- `discord-off` - Disable notifications
-- `discord-status` - Check current state
-
-### For Bash Users
-
-Add these to your `.bashrc` or `.zshrc`:
-```bash
-alias discord-on='touch ~/.claude/notifications-enabled && echo "Discord notifications ENABLED"'
-alias discord-off='rm -f ~/.claude/notifications-enabled && echo "Discord notifications DISABLED"'
-alias discord-status='[ -f ~/.claude/notifications-enabled ] && echo "ENABLED" || echo "DISABLED"'
-```
-
-### Using Slash Commands
-
-The toggle is built into the slash commands:
-- `/discord-protocol "task"` - Enables notifications AND starts autonomous work
-- `/end-protocol` - Disables notifications
-
-### Manual Toggle
-
-```bash
-# Enable
-touch ~/.claude/notifications-enabled
-
-# Disable
-rm ~/.claude/notifications-enabled
-```
-
----
-
-## Part 6: Test the Complete System (2 minutes)
-
-Time to verify everything works end-to-end!
-
-### Step 5.1: Start Claude Code
-
-```bash
-claude code
-```
-
-### Step 5.2: Give a Simple Test Task
-
-In the Claude Code session, try:
-
-```
-"Create a simple hello world function in test.js and write a test for it"
-```
-
-### Step 5.3: Watch for Notification
-
-When Claude stops (completes the task), you should:
-
-1. ✅ See Claude's response in terminal
-2. ✅ Hear/see your phone buzz (if Discord app installed)
-3. ✅ See notification in Discord channel
-
-The notification should look like:
-
-```
-🛑 Claude Code Stopped
-
-**STATUS: COMPLETED**
-
-- What was done: Created hello world function and test
-- Current state: Function working, test passing
-- Next step: Ready for review
-- Session: test-hello-001
-- Modified: test.js, test.spec.js
-- Test: npm test
-
-Session: test-hello-001 | 2026-02-24 19:30:45 PST
-```
-
-**If you see this notification, congratulations! The system is working!** 🎉
-
----
-
-## Part 7: Optional - Slash Command (2 minutes)
-
-Add a slash command for quick activation.
-
-### Step 6.1: Create commands directory
-
-```bash
-# macOS/Linux/WSL
-mkdir -p ~/.claude/commands
-
-# Windows PowerShell
-New-Item -Path "$env:USERPROFILE\.claude\commands" -ItemType Directory -Force
-```
-
-### Step 6.2: Copy command definition
-
-```bash
-# macOS/Linux/WSL
-cp templates/commands/discord-protocol.md ~/.claude/commands/
-
-# Windows PowerShell
-Copy-Item templates\commands\discord-protocol.md "$env:USERPROFILE\.claude\commands\"
-```
-
-### Step 6.3: Test the command
-
-Restart Claude Code, then try:
-
-```
-/discord-protocol "Analyze the package.json file and suggest improvements"
-```
-
-Claude Code should activate with the protocol loaded.
-
----
-
-## Verification Checklist
-
-Before moving on, verify:
-
-- ✅ Discord webhook working (test message appeared)
-- ✅ Hook script working (test notification appeared)
-- ✅ settings.json configured correctly
-- ✅ CLAUDE.md installed
-- ✅ End-to-end test successful (Claude Code → Discord notification)
-- ✅ Phone receives notifications (if Discord app installed)
-
----
-
-## Next Steps
-
-### Immediate
-
-1. **Try a real task:**
-   ```bash
-   claude code --dangerously-skip-permissions
-   "Analyze this codebase and create a technical debt report"
-   ```
-
-2. **Monitor from phone:**
-   - Install Discord mobile app
-   - Enable push notifications for your server
-   - Test that phone buzzes when Claude stops
-
-3. **Refine your protocol:**
-   - Edit `~/.claude/CLAUDE.md`
-   - Add project-specific guidelines
-   - Customize STATUS format if needed
-
-### Advanced
-
-1. **Multi-agent setup** - See [ADVANCED.md](ADVANCED.md)
-2. **Supervisor pattern** - Automate routine decisions
-3. **Custom protocols** - Project-specific templates
-
----
-
-## Troubleshooting
-
-### Notifications not appearing
-
-**Check Discord webhook:**
-```bash
-curl -X POST "YOUR_WEBHOOK_URL" \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Direct test"}'
-```
-
-If this fails, webhook URL is wrong.
-
-**Check hook script permissions:**
-```bash
-ls -la ~/.claude/discord-notify.sh
-# Should show: -rwxr-xr-x (executable)
-```
-
-If not executable:
-```bash
+# Copy script to Claude config directory
+cp scripts/discord-notify.sh ~/.claude/
 chmod +x ~/.claude/discord-notify.sh
+
+# Add your webhook URL
+nano ~/.claude/discord-notify.sh
+# Find: WEBHOOK_URL="YOUR_WEBHOOK_URL_HERE"
+# Replace with your actual webhook URL
 ```
 
-**Check settings.json syntax:**
+Notifications default to off — no shell profile changes needed. The `/discord-protocol` command enables them per-session via `CLAUDE_ENV_FILE`.
+
+### Windows (WSL) — Recommended
+
 ```bash
-cat ~/.claude/settings.json | python -m json.tool
-# Should show formatted JSON without errors
+# In your WSL terminal:
+cp scripts/discord-notify.sh /home/YOUR_WSL_USER/.claude/
+chmod +x /home/YOUR_WSL_USER/.claude/discord-notify.sh
+
+# Edit and add your webhook URL
+nano /home/YOUR_WSL_USER/.claude/discord-notify.sh
 ```
 
-**Check Claude Code is using settings:**
-```bash
-# Start Claude Code with verbose logging
-claude code --verbose
-# Look for "Loaded settings from..." message
-```
+Notifications default to off — no shell profile changes needed. The `/discord-protocol` command enables them per-session via `CLAUDE_ENV_FILE`.
 
-### Hook script runs but no Discord notification
+> Your WSL username is shown at your bash prompt. If unsure, run `whoami`.
 
-**Test the script directly:**
-```bash
-echo '{"hook_event_name":"Stop","last_assistant_message":"Test","session_id":"test"}' | ~/.claude/discord-notify.sh
-```
+### Windows (PowerShell — no WSL)
 
-**Check for errors:**
-```bash
-# Add this to the script for debugging:
-# echo "$PAYLOAD" > /tmp/discord-debug.json
-# Check the file for malformed JSON
-```
-
-**Verify webhook URL is set:**
-```bash
-grep "WEBHOOK_URL=" ~/.claude/discord-notify.sh
-# Should show your actual webhook URL, not placeholder
-```
-
-### Windows-specific issues
-
-**PowerShell execution policy:**
 ```powershell
-Get-ExecutionPolicy
-# If "Restricted", change it:
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+# Copy to Claude config directory
+Copy-Item scripts\discord-notify.ps1 "$env:USERPROFILE\.claude\"
+
+# Edit and add your webhook URL
+notepad "$env:USERPROFILE\.claude\discord-notify.ps1"
+# Find: $WebhookUrl = "YOUR_WEBHOOK_URL_HERE"
+# Replace with your actual webhook URL
 ```
 
-**Path issues:**
-```powershell
-# Verify script exists
-Test-Path "$env:USERPROFILE\.claude\discord-notify.ps1"
+> If scripts are blocked: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
 
-# Test running directly
-& "$env:USERPROFILE\.claude\discord-notify.ps1"
-```
+---
 
-### WSL-specific issues
+## Step 5: Configure Claude Code Hooks
 
-**Ensure script is in WSL filesystem:**
+Copy the settings template to your Claude config directory:
+
 ```bash
-# Script should be at
-/home/YOUR_USERNAME/.claude/discord-notify.sh
-
-# NOT at
-/mnt/c/Users/YOUR_USERNAME/.claude/discord-notify.sh
+cp templates/settings-final.json ~/.claude/settings.json
 ```
 
-**Check curl is installed:**
+**Or manually add to your existing `~/.claude/settings.json`:**
+
+```json
+{
+  "skipDangerousModePermissionPrompt": true,
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [{"type": "command", "command": "bash ~/.claude/discord-notify.sh", "timeout": 15}]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "*",
+        "hooks": [{"type": "command", "command": "bash ~/.claude/discord-notify.sh", "timeout": 15}]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [{"type": "command", "command": "bash ~/.claude/discord-bridge/start-bridge.sh 2>/dev/null"}]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [{"type": "command", "command": "bash ~/.claude/discord-poll.sh"}]
+      }
+    ]
+  }
+}
+```
+
+> **Note:** The `matcher: "*"` field is required in current Claude Code versions. Hooks without it will be silently ignored.
+
+> **macOS/Linux:** `bash ~/.claude/discord-notify.sh`  
+> **Windows WSL:** `bash /home/YOUR_WSL_USER/.claude/discord-notify.sh`  
+> **Windows PowerShell:** `powershell.exe -File "$env:USERPROFILE\\.claude\\discord-notify.ps1"`
+
+---
+
+## Step 6: Install the Protocol
+
 ```bash
-which curl
-# Should show: /usr/bin/curl
-
-# If not installed:
-sudo apt-get install curl
+cp templates/CLAUDE.md ~/.claude/CLAUDE.md
 ```
 
----
-
-## Common Questions
-
-**Q: Do I need to restart Claude Code after changing settings?**  
-A: Yes, Claude Code reads settings.json at startup.
-
-**Q: Can I use different webhooks for different projects?**  
-A: Yes! Create project-specific CLAUDE.md files with different webhook URLs, or use environment variables.
-
-**Q: Will this work with Claude API (not Claude Code)?**  
-A: The hook system is Claude Code specific, but you can implement similar webhooks in your own code that calls Claude API.
-
-**Q: Can I use Slack instead of Discord?**  
-A: Yes! Slack has webhooks too. Just change the webhook URL and adjust the payload format to match Slack's API.
-
-**Q: How do I stop getting notifications?**
-A: Run `discord-off` (if you added the PowerShell/bash functions), use `/end-protocol` in Claude Code, or manually `rm ~/.claude/notifications-enabled`. The hooks stay registered but the scripts exit silently when the toggle file is absent.
-
-**Q: Can other people see my notifications?**  
-A: Only people in your Discord server who have access to the channel where the webhook posts.
+This installs the STATUS notification protocol globally so it's active in every Claude Code session.
 
 ---
 
-## Tips for Success
+## Step 7: Install the Slash Command (Optional)
 
-**Start small:**
-- Test with trivial tasks first
-- Verify notifications work before autonomous work
-- Build confidence in the system
+```bash
+mkdir -p ~/.claude/commands
+cp templates/discord-protocol.md ~/.claude/commands/discord-protocol.md
+```
 
-**Monitor closely at first:**
-- Keep Discord open initially
-- Watch how Claude structures notifications
-- Refine protocol based on what works
-
-**Iterate on protocol:**
-- Edit CLAUDE.md based on experience
-- Add examples from your actual work
-- Make STATUS format work for your workflow
-
-**Trust but verify:**
-- Review all AI-generated code
-- Use version control
-- Have rollback plan
+This enables the `/discord-protocol` slash command inside Claude Code.
 
 ---
 
-## You're Ready!
+## Step 8: Test It
 
-The system is installed. Time to experience autonomous coding.
+**Test outbound notifications:**
 
-Try this:
+Start Claude Code and give it a simple task:
 
 ```bash
 claude code --dangerously-skip-permissions
-"Analyze the most complex file in this codebase. Find potential bugs, suggest refactorings, and create a detailed report."
 ```
 
-Then put your phone in your pocket and go make coffee. ☕
+Then send:
+```
+Test the Discord notification system. Create a file called hello.txt with "Hello World", then stop.
+```
 
-When it buzzes, you'll have your report.
+When Claude stops, you should receive a Discord notification within a few seconds.
 
-**Welcome to autonomous development.** 🚀
+**Test the bridge (two-way):**
+
+1. Start a Claude Code session — the bridge auto-starts on the first tool call via PreToolUse hook
+2. Send a message to `#claude-code-chat` from your phone
+3. Check that the inbox is being written to:
+```powershell
+cat ~/.claude/discord-inbox.jsonl
+```
+4. On Claude's next tool call, it will read and clear the inbox and surface your message
+
+**Expected notification:**
+- Orange embed titled "🛑 Claude Code Stopped"
+- Contains Claude's final STATUS message
+- Footer shows session ID and timestamp
+
+If notifications don't arrive, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---
 
-*Having issues? Open an issue on GitHub or check [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for more help.*
+## Step 9: Use the `/discord-protocol` Command
+
+`/discord-protocol` is a **mode switch**, not a session initializer. You can invoke it at any point during a Claude Code session — at the start, before stepping away mid-task, or any time you want notifications active. Use `/end-protocol` to turn it off without ending the session.
+
+```
+/discord-protocol Analyze the authentication system and write a security report
+```
+
+Or invoke it mid-session with no task argument to simply enable notifications:
+
+```
+/discord-protocol
+```
+
+### How Notification Gating Works
+
+The system supports two mechanisms depending on your Claude Code version:
+
+**Modern (CLAUDE_ENV_FILE available):**
+Notifications are session-scoped. `/discord-protocol` writes `CLAUDE_DISCORD_NOTIFY=true` to `$CLAUDE_ENV_FILE` — a file Claude Code creates at session start and destroys at session end. No cleanup needed, no stale state.
+
+**Legacy (toggle file fallback):**
+If `CLAUDE_ENV_FILE` is not available in your Claude Code version, the system falls back to a toggle file at `~/.claude/notifications-enabled`. `/discord-protocol` creates it, `/end-protocol` removes it.
+
+The hook script detects which mechanism is available and uses the right one automatically. Both work. The modern approach is cleaner — update Claude Code when a new version is available to get it.
+
+Walk away. Your phone will buzz when Claude needs you.
+
+---
+
+## PowerShell Profile Setup (Windows)
+
+For a cleaner workflow, add this to your PowerShell profile (`$PROFILE`):
+
+```powershell
+function discord-protocol {
+    param([string]$Task)
+    claude code --dangerously-skip-permissions --system-prompt @"
+Follow the Discord Notification Protocol in CLAUDE.md exactly.
+Your task: $Task
+"@
+}
+```
+
+Notifications default to off via `CLAUDE_ENV_FILE` — no profile variable needed. The `/discord-protocol` command enables them per-session automatically.
+
+Then use it from any terminal:
+```powershell
+discord-protocol "Refactor the video editor scaling feature"
+```
+
+---
+
+## MCP Integrations (Advanced)
+
+The system works standalone but becomes significantly more powerful with MCP servers added to your Claude Desktop config (`claude_desktop_config.json`):
+
+**Two-way Discord communication** — Claude can read responses from Discord, not just send:
+- Discord MCP server enables Claude to monitor threads and receive your replies autonomously
+
+**Vision capabilities** — Claude can analyze screenshots and visual output:
+- Z.ai Vision MCP for visual analysis during autonomous sessions
+
+**Browser automation** — Claude can interact with web interfaces:
+- Claude in Chrome MCP for browser-based tasks
+
+See [ADVANCED.md](ADVANCED.md) for MCP configuration details.
+
+---
+
+## Verifying Everything Works
+
+Run this checklist:
+
+- [ ] `~/.claude/discord-notify.sh` exists and is executable (`ls -la ~/.claude/`)
+- [ ] Webhook URL is in the script (not the placeholder)
+- [ ] `~/.claude/settings.json` has all four hooks (Stop, Notification, PreToolUse, PostToolUse)
+- [ ] `~/.claude/CLAUDE.md` exists with the STATUS protocol
+- [ ] `~/.claude/discord-bridge/` exists with `bridge.js`, `start-bridge.sh`, `node_modules/`
+- [ ] Env vars set: `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID`, `DISCORD_USER_ID`
+- [ ] Message Content Intent enabled in Discord Developer Portal
+- [ ] Test notification arrives in Discord
+- [ ] Test message to `#claude-code-chat` appears in `discord-inbox.jsonl`
+
+All checked? You're autonomous. 🚀

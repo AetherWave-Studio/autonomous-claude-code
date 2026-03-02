@@ -1,624 +1,388 @@
-# Troubleshooting Guide
-### Common issues and how to fix them
+# Troubleshooting
+
+Solutions to common issues with the Autonomous Claude Code system.
 
 ---
 
-## Quick Diagnostics
+## No Discord Notification Arriving
 
-Run these commands to check system status:
-
+**Check 1: Script is executable**
 ```bash
-# 1. Check if files exist
-ls -la ~/.claude/
-
-# 2. Test webhook
-curl -X POST "YOUR_WEBHOOK_URL" -H "Content-Type: application/json" -d '{"content":"Test"}'
-
-# 3. Test hook script
-echo '{"hook_event_name":"Stop","last_assistant_message":"Test","session_id":"test"}' | ~/.claude/discord-notify.sh
-
-# 4. Verify settings
-cat ~/.claude/settings.json | python -m json.tool
-```
-
-If all four work, the system should be functional.
-
----
-
-## Issue: No Notifications Appearing
-
-### Symptom
-Claude Code works fine, but no Discord notifications when it stops.
-
-### Diagnosis
-
-**Step 1: Test webhook directly**
-```bash
-curl -X POST "YOUR_WEBHOOK_URL" \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Direct webhook test"}'
-```
-
-- ✅ Message appears in Discord → Webhook works, problem is elsewhere
-- ❌ No message → Webhook URL is wrong or invalid
-
-**Step 2: Test hook script**
-```bash
-echo '{"hook_event_name":"Stop","last_assistant_message":"Test notification","session_id":"test-001"}' | ~/.claude/discord-notify.sh
-```
-
-- ✅ Formatted notification appears → Script works, hooks not configured
-- ❌ No notification → Script has issues
-
-**Step 3: Check if hooks are running**
-```bash
-# Add temporary logging to script
-# Add this line near the top of discord-notify.sh:
-echo "Hook fired at $(date)" >> /tmp/claude-hook.log
-
-# Then check after Claude Code runs:
-cat /tmp/claude-hook.log
-```
-
-- ✅ Log file has entries → Hooks firing, script issue
-- ❌ No log file → Hooks not configured
-
-### Solutions
-
-**If webhook URL is wrong:**
-1. Go to Discord → Server Settings → Integrations → Webhooks
-2. Find your webhook
-3. Click "Copy Webhook URL"
-4. Update in `~/.claude/discord-notify.sh`
-
-**If script isn't executable:**
-```bash
-chmod +x ~/.claude/discord-notify.sh
-```
-
-**If hooks not configured:**
-1. Check `~/.claude/settings.json` exists
-2. Verify it has the "hooks" section
-3. Restart Claude Code
-
----
-
-## Issue: Malformed Notifications
-
-### Symptom
-Notifications appear but are garbled, empty, or show JSON instead of formatted embeds.
-
-### Diagnosis
-
-**Check the actual notification in Discord:**
-- Shows raw JSON → Payload format issue
-- Empty/blank → Message extraction failed
-- Garbled text → Character escaping issue
-
-### Solutions
-
-**For raw JSON appearing:**
-
-The script might be sending incorrect content type. Verify this line in the script:
-
-```bash
-curl -s -X POST "$WEBHOOK_URL" \
-  -H "Content-Type: application/json" \  # This line is critical
-  -d "$PAYLOAD"
-```
-
-**For empty messages:**
-
-Claude's last message might be empty. Add fallback:
-
-```bash
-if [ -z "$LAST_MESSAGE" ]; then
-  LAST_MESSAGE="(No message provided)"
-fi
-```
-
-**For character issues:**
-
-The `sed` commands might not handle special characters. Enhanced version:
-
-```bash
-# Replace the ESCAPED_MESSAGE line with:
-ESCAPED_MESSAGE=$(echo "$LAST_MESSAGE" | \
-  sed 's/\\/\\\\/g' | \
-  sed 's/"/\\"/g' | \
-  sed ':a;N;$!ba;s/\n/\\n/g' | \
-  sed 's/\t/\\t/g')
-```
-
----
-
-## Issue: Hook Script Fails Silently
-
-### Symptom
-No notifications, no errors, hooks appear to be configured correctly.
-
-### Diagnosis
-
-**Add debugging to the script:**
-
-Edit `~/.claude/discord-notify.sh` and add:
-
-```bash
-# At the very top, after #!/bin/bash
-exec 2>>/tmp/discord-hook-errors.log
-set -x  # Enable command tracing
-
-# Rest of script...
-```
-
-Then check errors:
-```bash
-cat /tmp/discord-hook-errors.log
-```
-
-### Common Silent Failures
-
-**1. Missing dependencies**
-```bash
-# Check if curl is installed
-which curl
-
-# If not found, install:
-# Ubuntu/Debian
-sudo apt-get install curl
-
-# macOS (usually pre-installed)
-brew install curl
-```
-
-**2. JSON parsing issues**
-
-If using `jq` for JSON parsing:
-```bash
-# Check if jq is installed
-which jq
-
-# Install if needed
-# Ubuntu/Debian
-sudo apt-get install jq
-
-# macOS
-brew install jq
-```
-
-**3. Permission issues**
-```bash
-# Verify script is executable
 ls -la ~/.claude/discord-notify.sh
 # Should show: -rwxr-xr-x
-
-# Fix permissions
+```
+If not:
+```bash
 chmod +x ~/.claude/discord-notify.sh
 ```
 
----
-
-## Issue: Windows PowerShell Script Not Working
-
-### Symptom
-PowerShell version of script doesn't send notifications.
-
-### Diagnosis
-
-**Test PowerShell execution:**
-```powershell
-# Run script manually
-'{"hook_event_name":"Stop","last_assistant_message":"Test","session_id":"test"}' | & "$env:USERPROFILE\.claude\discord-notify.ps1"
-```
-
-### Solutions
-
-**Execution Policy Issue:**
-```powershell
-# Check current policy
-Get-ExecutionPolicy
-
-# If "Restricted", fix it:
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-
-# Verify
-Get-ExecutionPolicy
-```
-
-**Path Issues:**
-```powershell
-# Verify script exists
-Test-Path "$env:USERPROFILE\.claude\discord-notify.ps1"
-
-# If False, script is missing or path is wrong
-```
-
-**JSON Parsing Issues:**
-
-PowerShell's JSON handling might fail on complex input. Enhanced version:
-
-```powershell
-# Replace the input parsing section with:
-try {
-    $JsonInput = $Input | ConvertFrom-Json
-    $EventName = $JsonInput.hook_event_name
-    $LastMessage = $JsonInput.last_assistant_message
-    $SessionId = $JsonInput.session_id
-} catch {
-    # Fallback to regex parsing
-    # (existing regex code)
-}
-```
-
----
-
-## Issue: Notifications Delayed or Batched
-
-### Symptom
-Multiple notifications arrive at once, or significant delay between Claude stopping and notification appearing.
-
-### Diagnosis
-
-This is usually a Discord API issue, not the script.
-
-### Solutions
-
-**1. Check Discord status:**
-Visit https://discordstatus.com/ to see if Discord is having issues.
-
-**2. Reduce timeout:**
-
-In `settings.json`, try lower timeout:
-```json
-{
-  "hooks": {
-    "Stop": [{
-      "command": "bash ~/.claude/discord-notify.sh",
-      "timeout": 5  // Reduced from 15
-    }]
-  }
-}
-```
-
-**3. Check network:**
-
-Test webhook latency:
+**Check 2: Webhook URL is set**
 ```bash
-time curl -X POST "YOUR_WEBHOOK_URL" \
+grep WEBHOOK_URL ~/.claude/discord-notify.sh
+# Should show your actual URL, not "YOUR_WEBHOOK_URL_HERE"
+```
+
+**Check 3: Test the webhook directly**
+```bash
+curl -s -X POST "YOUR_WEBHOOK_URL" \
   -H "Content-Type: application/json" \
-  -d '{"content":"Latency test"}'
+  -d '{"content": "Test notification from Claude Code setup"}'
 ```
+If this doesn't appear in Discord, the webhook URL is wrong. Regenerate it in Discord Server Settings → Integrations.
 
-If this takes >2 seconds, network/Discord might be slow.
-
----
-
-## Issue: Hook Runs But Claude Continues Working
-
-### Symptom
-Notification appears, but Claude didn't actually stop - it kept working.
-
-### Diagnosis
-
-This happens when the hook fires on "Notification" events (permission prompts) not "Stop" events.
-
-### Solution
-
-**Filter notifications in the script:**
-
-```bash
-# Add this near the top of discord-notify.sh
-if [ "$EVENT_NAME" != "Stop" ]; then
-  exit 0  # Only notify on actual stops
-fi
-```
-
-Or configure hooks to only fire on Stop:
-
-```json
-{
-  "hooks": {
-    "Stop": [{
-      "command": "bash ~/.claude/discord-notify.sh",
-      "timeout": 15
-    }]
-    // Remove "Notification" hook
-  }
-}
-```
-
----
-
-## Issue: Multiple Duplicate Notifications
-
-### Symptom
-Same notification appears 2-3 times in Discord.
-
-### Diagnosis
-
-Either the hook is configured multiple times, or the script is being called multiple times.
-
-### Solution
-
-**Check settings.json:**
+**Check 4: Hooks are configured**
 ```bash
 cat ~/.claude/settings.json
+# Should contain "Stop" and "Notification" hook entries
 ```
 
-Make sure "Stop" hook is only listed once:
+**Check 5: Windows WSL path mismatch**
 
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "command": "bash ~/.claude/discord-notify.sh",
-        "timeout": 15
-      }
-      // Make sure there's only ONE entry here
-    ]
-  }
+The most common Windows issue. Hooks run via WSL bash, so the script **must** be in your WSL filesystem:
+```bash
+# Correct (WSL path)
+/home/YOUR_WSL_USER/.claude/discord-notify.sh
+
+# Wrong (Windows path — hooks can't reach this)
+C:\Users\drew_\.claude\discord-notify.sh
+```
+
+Check your `settings.json` hook command uses the WSL path format.
+
+---
+
+## Hook Script Not Executing
+
+**Verify Claude Code sees the hook:**
+```bash
+# Run a quick test task, then check if the script ran
+claude code
+# Give it: "Say hello and stop immediately"
+# Watch terminal for any hook errors
+```
+
+**Check JSON syntax in settings.json:**
+```bash
+cat ~/.claude/settings.json | python3 -m json.tool
+# If it errors, you have a syntax issue in the JSON
+```
+
+**Manually test the hook script:**
+```bash
+echo '{"hook_event_name":"Stop","last_assistant_message":"Test message","session_id":"test-001","stop_hook_active":false}' | bash ~/.claude/discord-notify.sh
+```
+Should send a notification. If it errors, look at the output for clues.
+
+---
+
+## STATUS Format Not Appearing in Notification
+
+The notification arrives but just shows raw text, not the structured STATUS format.
+
+This means CLAUDE.md isn't loaded. Check:
+```bash
+ls ~/.claude/CLAUDE.md
+cat ~/.claude/CLAUDE.md | head -5
+# Should show "# Discord Notification Protocol"
+```
+
+If missing:
+```bash
+cp templates/CLAUDE.md ~/.claude/CLAUDE.md
+```
+
+Claude Code automatically loads `~/.claude/CLAUDE.md` at session start. No restart needed.
+
+---
+
+## `/discord-protocol` Command Not Found
+
+```bash
+ls ~/.claude/commands/
+# Should show discord-protocol.md
+```
+
+If missing:
+```bash
+mkdir -p ~/.claude/commands
+cp templates/discord-protocol.md ~/.claude/commands/
+```
+
+Then **restart Claude Code** — custom commands load at startup.
+
+> Note: Use `.md` files for slash commands, not `.json`. Claude Code auto-discovers `.md` command files.
+
+---
+
+## PowerShell Issues (Windows)
+
+**Scripts not recognized:**
+```powershell
+# Check execution policy
+Get-ExecutionPolicy
+
+# If "Restricted", change it:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+**Profile not loading:**
+```powershell
+# Load profile manually
+. $PROFILE
+
+# Check profile exists
+Test-Path $PROFILE
+
+# Create if missing
+New-Item -Path $PROFILE -ItemType File -Force
+```
+
+**discord-protocol function not found:**
+```powershell
+# Verify it's in your profile
+Get-Content $PROFILE | Select-String "discord-protocol"
+
+# If missing, add it:
+Add-Content $PROFILE @'
+function discord-protocol {
+    param([string]$Task)
+    claude code --dangerously-skip-permissions --system-prompt "Follow the Discord Notification Protocol in CLAUDE.md exactly. Your task: $Task"
 }
+'@
+. $PROFILE
 ```
-
-**Check for duplicate script files:**
-```bash
-find ~ -name "discord-notify.sh" 2>/dev/null
-```
-
-Should only find one file at `~/.claude/discord-notify.sh`.
 
 ---
 
-## Issue: WSL-Specific Problems
+## Git Issues
 
-### Symptom
-Script works in WSL bash, but Claude Code hooks don't trigger it.
+**Lock file error:**
+```powershell
+Remove-Item .git/index.lock -Force
+```
 
-### Diagnosis
+**Commit message opens Vim:**
+```bash
+# Always use -m flag
+git commit -m "your message here"
 
-Claude Code might be using Windows paths, not WSL paths.
+# Or set VS Code as default editor
+git config --global core.editor "code --wait"
+```
 
-### Solution
+---
 
-**Verify hook path in settings.json:**
+## Server Won't Start (AetherWave / Node projects)
 
-**WRONG (Windows path):**
+**Kill stuck processes:**
+```powershell
+Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+
+Then restart your dev server.
+
+---
+
+## Database Connection Failed
+
+If you're working on a project with a database and Claude reports connection errors:
+
+1. Check your `.env` file has the correct `DATABASE_URL`
+2. Verify the database service is running (Neon, Supabase, etc. can sleep)
+3. Test the connection directly:
+```bash
+node -e "const { Pool } = require('pg'); const p = new Pool({connectionString: process.env.DATABASE_URL}); p.query('SELECT 1').then(() => console.log('Connected')).catch(console.error)"
+```
+
+---
+
+## Notification Arrives But Content is Cut Off
+
+Discord embeds have a 4096 character limit on the description field. The hook script caps messages at 1500 characters to stay well within this.
+
+If you want more content, split your STATUS messages or adjust the `head -c 1500` value in the script. Keep in mind very long notifications are harder to read on mobile — the point is actionable brevity.
+
+---
+
+## Notifications Not Firing Even After `/discord-protocol`
+
+**Check 1: Which mechanism is active**
+```bash
+echo $CLAUDE_ENV_FILE
+```
+- If this returns a path → modern mechanism. Check that `CLAUDE_DISCORD_NOTIFY=true` was written:
+```bash
+cat $CLAUDE_ENV_FILE
+```
+- If this returns empty → legacy toggle file mechanism. Check that the file exists:
+```bash
+ls ~/.claude/notifications-enabled
+```
+
+**Check 2: Hook script has the version detection logic**
+```bash
+grep -A 10 "NOTIFICATION GATE" ~/.claude/discord-notify.sh
+```
+If you see only one mechanism and not both, you have an older version of the script. Update from the repo.
+
+**Check 3: `CLAUDE_ENV_FILE` not present (most common)**
+`CLAUDE_ENV_FILE` may not be implemented in your current Claude Code version. The hook script falls back to the toggle file automatically — but only if it was updated from this repo. Older versions of `discord-notify.sh` that only check `CLAUDE_ENV_FILE` will silently exit without firing.
+
+Fix: update `~/.claude/discord-notify.sh` from `scripts/discord-notify.sh` in this repo.
+
+---
+
+
+---
+
+## Discord Bridge Not Receiving Messages
+
+**Check 1: Is the bridge running?**
+```powershell
+cat ~/.claude/discord-bridge/bridge.heartbeat
+# Should show a recent Unix timestamp (within 30 seconds)
+```
+If the heartbeat is stale or missing, the bridge isn't running. Start it manually:
+```powershell
+cd ~/.claude/discord-bridge
+node bridge.js
+```
+
+**Check 2: Is the inbox being written to?**
+
+Send a message to `#claude-code-chat`, then check:
+```powershell
+cat ~/.claude/discord-inbox.jsonl
+```
+If empty after sending — the bridge is running but not receiving. See checks 3-5.
+
+**Check 3: Message Content Intent**
+
+Discord Developer Portal → Applications → your bot → Bot → Privileged Gateway Intents → **Message Content Intent must be ON**.
+
+Without this, the bridge receives events but `message.content` is empty and nothing gets written.
+
+**Check 4: Verify env vars are set**
+```powershell
+echo $env:DISCORD_BOT_TOKEN
+echo $env:DISCORD_CHANNEL_ID
+echo $env:DISCORD_USER_ID
+```
+All three must return values. If empty, add them to your shell profile and reload.
+
+**Check 5: Channel and User ID match**
+
+Right-click `#claude-code-chat` → Copy Channel ID. Right-click your username → Copy User ID. Confirm both match the env vars you set.
+
+---
+
+## Zombie Bridge Instances (Windows — Message Duplication)
+
+If you're seeing the same message written hundreds of times to `discord-inbox.jsonl`, you have zombie bridge processes accumulating.
+
+**Root cause:** On Windows, the old PID-based liveness check in `start.sh` always failed, spawning a new bridge on every tool call. Each instance writes every incoming message independently.
+
+**Fix:** The current `start-bridge.sh` uses heartbeat-based liveness detection — no PID checks. Update from the repo if you have an older version.
+
+**Emergency cleanup (kill all zombie bridges):**
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File ~/.claude/discord-bridge/kill-all-bridges.ps1
+```
+
+Then restart the bridge:
+```powershell
+cd ~/.claude/discord-bridge
+node bridge.js
+```
+
+---
+
+## Bridge Writes to Inbox But Claude Doesn't See Messages
+
+The PostToolUse poll has stale throttle state. Check:
+```powershell
+ls ~/.claude/discord-poll/
+```
+
+If `last-poll` timestamp is old, clear the state:
+```powershell
+Remove-Item ~/.claude/discord-poll/last-poll
+Remove-Item ~/.claude/discord-poll/last-msg-id
+```
+
+Next tool call will poll fresh and surface queued messages.
+
+---
+
+## hooks Not Firing (Settings Format Issue)
+
+Current Claude Code versions require the `matcher` field on all hooks. The old format (direct command objects) is silently ignored.
+
+**Wrong (old format):**
 ```json
-"command": "bash C:\\Users\\username\\.claude\\discord-notify.sh"
+"Stop": [{"type": "command", "command": "bash ~/.claude/discord-notify.sh"}]
 ```
 
-**CORRECT (WSL path):**
+**Correct (current format):**
 ```json
-"command": "bash ~/.claude/discord-notify.sh"
+"Stop": [{"matcher": "*", "hooks": [{"type": "command", "command": "bash ~/.claude/discord-notify.sh", "timeout": 15}]}]
 ```
 
-**Or use wsl command:**
-```json
-"command": "wsl bash ~/.claude/discord-notify.sh"
-```
-
-**Verify the script is in WSL filesystem:**
-```bash
-# Should be at:
-/home/YOUR_USERNAME/.claude/discord-notify.sh
-
-# NOT at:
-/mnt/c/Users/YOUR_USERNAME/.claude/discord-notify.sh
-```
+Use `templates/settings-final.json` from this repo — it has the correct format for all four hooks.
 
 ---
 
-## Issue: STATUS Format Not Appearing
 
-### Symptom
-Notifications appear but don't follow the structured STATUS format.
 
-### Diagnosis
+If the Discord MCP server starts but can't authenticate — bot appears offline or `read-messages`/`send-message` tools fail — dotenv is not finding the `.env` file.
 
-Claude isn't loading the CLAUDE.md protocol.
+This is a Windows-specific issue. On Windows, Claude Desktop may launch the MCP server from a different working directory than the project root, causing dotenv's relative path lookup to fail silently.
 
-### Solution
+**Fix:** Hardcode the absolute path in `E:\Gits\discordmcp\build\index.js`:
 
-**Verify CLAUDE.md exists:**
-```bash
-ls -la ~/.claude/CLAUDE.md
+```javascript
+dotenvMod.default.config({ path: 'E:/Gits/discordmcp/.env' });
 ```
 
-**Check Claude Code is loading it:**
+Note forward slashes — Node.js handles them correctly on Windows.
 
-Start Claude Code and immediately ask:
-```
-"What protocols are you following?"
-```
+After editing, restart Claude Desktop for the change to take effect. The bot should authenticate and the MCP tools should become available in your session.
 
-Claude should mention the Discord Notification Protocol.
-
-**If not loading:**
-
-1. Make sure file is named exactly `CLAUDE.md` (case-sensitive)
-2. Verify it's in `~/.claude/` not `~/.claude/commands/`
-3. Restart Claude Code
-
-**Project-specific protocol:**
-
-You can also place CLAUDE.md in your project's `.claude/` directory:
-```bash
-mkdir -p ./.claude
-cp ~/.claude/CLAUDE.md ./.claude/
-```
-
-Project-level protocol takes precedence over global.
+> On macOS/Linux this issue typically doesn't occur as the working directory resolves correctly from the relative path.
 
 ---
 
-## Issue: Mobile Notifications Not Working
+## Discord Channel Architecture
 
-### Symptom
-Notifications appear in Discord desktop/web, but phone doesn't buzz.
+This system uses two separate Discord channels — by design, not limitation:
 
-### Solution
+**Webhook → `#claude-logs` (or dedicated thread)**
+- One-way: Claude → Discord only
+- Fires on Stop, Notification, and Error events
+- Per-session named threads auto-created — full history in Discord sidebar
+- High volume during active sessions — keep it isolated
 
-**Check Discord mobile app settings:**
+**Bridge Bot → `#claude-code-chat` (top-level channel)**
+- Two-way: your messages → bridge bot → local inbox → Claude via PostToolUse hook
+- Real-time WebSocket delivery — messages land in seconds, not minutes
+- Send instructions mid-run from your phone; Claude picks them up on next tool call
+- Only your messages (filtered by User ID) are written to the inbox
 
-1. Open Discord app on phone
-2. Go to Settings → Notifications
-3. Enable "Push Notifications"
-4. Go to your server settings
-5. Enable notifications for your server
-6. Enable notifications for the specific channel
-
-**Check phone settings:**
-
-- iOS: Settings → Discord → Notifications → Allow
-- Android: Settings → Apps → Discord → Notifications → Enable
-
-**Test with direct message:**
-
-Ask someone to DM you on Discord. If that buzzes but webhook doesn't:
-- Webhook notifications might be treated differently
-- Try @mentioning yourself in the webhook message
-
-**Enhanced webhook payload:**
-
-```bash
-# Modify the payload to include a mention:
-PAYLOAD=$(cat <<EOF
-{
-  "content": "<@YOUR_USER_ID>",
-  "embeds": [{
-    "title": "$TITLE",
-    "description": "$ESCAPED_MESSAGE",
-    "color": $COLOR,
-    "footer": {
-      "text": "Session: $SESSION_ID | $TIMESTAMP"
-    }
-  }]
-}
-EOF
-)
+**Recommended Discord setup:**
+```
+#claude-logs          ← webhook fires here (notifications, session archives)
+#claude-code-chat     ← bridge bot listens here (your instructions to Claude)
 ```
 
-Replace `YOUR_USER_ID` with your Discord user ID (right-click your name → Copy ID).
+Clear separation: notifications don't bury your instructions, instructions don't get lost in notification noise.
 
 ---
 
-## Issue: Hook Timeout Errors
+## Still Stuck?
 
-### Symptom
-Logs show "Hook timeout" errors.
-
-### Diagnosis
-
-The webhook request is taking too long (>15 seconds).
-
-### Solution
-
-**Increase timeout in settings.json:**
-```json
-{
-  "hooks": {
-    "Stop": [{
-      "command": "bash ~/.claude/discord-notify.sh",
-      "timeout": 30  // Increased from 15
-    }]
-  }
-}
-```
-
-**Or make script non-blocking:**
-
-```bash
-# At the end of discord-notify.sh, run curl in background:
-curl -s -X POST "$WEBHOOK_URL" \
-  -H "Content-Type: application/json" \
-  -d "$PAYLOAD" \
-  > /dev/null 2>&1 &  # Note the & at the end
-
-exit 0
-```
-
----
-
-## Issue: Special Characters Breaking Notifications
-
-### Symptom
-Notifications fail when Claude's message contains quotes, backticks, or special characters.
-
-### Solution
-
-**Enhanced character escaping:**
-
-Replace the ESCAPED_MESSAGE line with:
-
-```bash
-# More robust escaping
-ESCAPED_MESSAGE=$(echo "$LAST_MESSAGE" | \
-  sed 's/\\/\\\\/g' | \          # Escape backslashes first
-  sed 's/"/\\"/g' | \             # Escape quotes
-  sed 's/`/\\`/g' | \             # Escape backticks
-  sed ':a;N;$!ba;s/\n/\\n/g' | \  # Escape newlines
-  sed 's/\t/\\t/g' | \            # Escape tabs
-  sed 's/\r//g')                  # Remove carriage returns
-```
-
----
-
-## Still Having Issues?
-
-### Get Help
-
-1. **Check the logs:**
-   - Hook errors: `/tmp/discord-hook-errors.log`
-   - Claude Code logs: Run with `--verbose` flag
-   - Discord webhook response: Add `-v` to curl command
-
-2. **Minimal test:**
-   Create a minimal test script:
-   ```bash
-   #!/bin/bash
-   curl -X POST "YOUR_WEBHOOK_URL" \
-     -H "Content-Type: application/json" \
-     -d '{"content":"Minimal test"}'
-   ```
-   If this works, the issue is in the main script.
-
-3. **GitHub Issues:**
-   Open an issue with:
-   - Your OS and version
-   - Error messages (sanitize sensitive data!)
-   - What you've tried
-   - Output of diagnostic commands
-
-4. **Discord Community:**
-   Join our Discord server for real-time help (link in main README).
-
----
-
-## Prevention Tips
-
-**Regular testing:**
-```bash
-# Test the full chain monthly
-echo '{"hook_event_name":"Stop","last_assistant_message":"Monthly test","session_id":"test"}' | ~/.claude/discord-notify.sh
-```
-
-**Keep backups:**
-```bash
-# Backup your working configuration
-cp ~/.claude/settings.json ~/.claude/settings.json.backup
-cp ~/.claude/discord-notify.sh ~/.claude/discord-notify.sh.backup
-```
-
-**Version control:**
-```bash
-# Track changes to your setup
-cd ~/.claude
-git init
-git add settings.json CLAUDE.md discord-notify.sh
-git commit -m "Working autonomous setup"
-```
-
----
-
-*Most issues are simple configuration problems. Work through the diagnostics systematically and you'll find the issue!*
+Open a [GitHub Issue](https://github.com/AetherWave-Studio/autonomous-claude-code/issues) with:
+- Your platform (Windows/WSL/Mac/Linux)
+- Output of `cat ~/.claude/settings.json`
+- Output of the manual hook test above
+- What you expected vs. what happened
