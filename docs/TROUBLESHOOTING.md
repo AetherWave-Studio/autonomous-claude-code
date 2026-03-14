@@ -386,3 +386,50 @@ Open a [GitHub Issue](https://github.com/AetherWave-Studio/autonomous-claude-cod
 - Output of `cat ~/.claude/settings.json`
 - Output of the manual hook test above
 - What you expected vs. what happened
+
+---
+
+## Permission Prompts Still Appearing After settings.local.json Setup
+
+**Check 1: Multiple settings.local.json locations**
+
+Claude Code checks each `.claude/` directory independently. If you have project-level `.claude/` folders, they need their own `settings.local.json`:
+
+```powershell
+# Find all .claude directories on Windows
+Get-ChildItem -Path C:\Users\YOUR_USER -Recurse -Filter ".claude" -Directory 2>$null
+Get-ChildItem -Path E:\Gits -Recurse -Filter ".claude" -Directory 2>$null
+```
+
+Copy `settings.local.json` to each location found.
+
+**Check 2: settings.local.json syntax**
+```powershell
+cat ~/.claude/settings.local.json | python3 -m json.tool
+```
+Any syntax error causes the entire file to be silently ignored.
+
+**Check 3: Permission format**
+
+The allow list uses glob patterns. `Bash(*)` covers all bash commands. Individual entries like `Bash(npm run dev:*)` are redundant once `Bash(*)` is present.
+
+---
+
+## Listening Mode Not Working (Backoff Poll Loop)
+
+If Claude completes a task but doesn't enter listening mode:
+
+**Check 1: `/discord-protocol` was invoked this session**
+
+Listening mode is part of the `/discord-protocol` slash command. If it wasn't invoked, Claude has no instructions to enter the poll loop.
+
+**Check 2: Background task support**
+
+The backoff loop uses `sleep N` as a background task with `block=true` to wait for completion. Verify Claude Code supports background tasks in your version.
+
+**Check 3: Inbox path**
+
+The poll loop reads `~/.claude/discord-inbox.jsonl`. Confirm the bridge is writing to the same path:
+```powershell
+cat ~/.claude/discord-bridge/bridge.js | grep inboxPath
+```
